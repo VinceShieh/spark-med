@@ -1,51 +1,70 @@
+
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.mllib.regression._
-import org.apache.spark.mllib.tree.GradientBoostedTrees
-import org.apache.spark.mllib.tree.configuration.BoostingStrategy
-import org.apache.spark.mllib.tree.model.GradientBoostedTreesModel
+import org.apache.spark.internal.Logging
+import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.ml.feature.LabeledPoint
+import org.apache.spark.ml.tree.impl.{GradientBoostedTrees => NewGBT}
+import org.apache.spark.ml.tuning.CrossValidator
 import org.apache.spark.mllib.util.MLUtils
-import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.tree.CGradientBoostedTrees
+import org.apache.spark.mllib.tree.configuration.{BoostingStrategy, Strategy}
+import org.apache.spark.mllib.tree.configuration.Algo._
+import org.apache.spark.mllib.tree.impurity.Variance
+import org.apache.spark.mllib.tree.loss.LogLoss
+import org.apache.spark.sql.{DataFrame, SparkSession}
 
 
 object SparkCT extends App {
 
   override def main(args: Array[String]): Unit = {
 
-    val sc = new SparkContext(new SparkConf().setAppName("SparkCT").setMaster("local[4]"))
+    val conf = new SparkConf().setAppName("SparkCT").setMaster("local[4]")
+    val sc = new SparkContext(conf)
 
-    if (args.length != 7) {
-      println("testFFM <train_file> <k> <n_iters> <eta> <lambda> " + "<normal> <random>")
-    }
+    // Set numIterations large enough so that it stops early.
+    //   val numIterations = 20
+    //   val trainRdd = sc.parallelize(OldGBTSuite.trainData, 2).map(_.asML)
 
-    val data= MLUtils.loadLibSVMFile(sc, "data/*")
+    //val data: DataFrame = spark.read.format("libsvm").load("data/ctdata/*")
+    val data = MLUtils.loadLibSVMFile(sc, "data/ctdata/*")
+
+    // Split the data into training and test sets (30% held out for testing).
     val splits = data.randomSplit(Array(0.7, 0.3))
     val (trainingData, testData) = (splits(0), splits(1))
 
     val boostingStrategy = BoostingStrategy.defaultParams("Classification")
-    boostingStrategy.numIterations = 3 // Note: Use more iterations in practice.
+    boostingStrategy.treeStrategy.algo = Classification
+    boostingStrategy.numIterations = 50 // Note: Use more iterations in practice.
     boostingStrategy.treeStrategy.numClasses = 2
     boostingStrategy.treeStrategy.maxDepth = 5
+    boostingStrategy.treeStrategy.impurity = Variance
     // Empty categoricalFeaturesInfo indicates all features are continuous.
     boostingStrategy.treeStrategy.categoricalFeaturesInfo = Map[Int, Int]()
+    boostingStrategy.validationTol = 0.001
 
-    val model = GradientBoostedTrees.train(trainingData, boostingStrategy)
-
+    val model = CGradientBoostedTrees.trainWithValidation(trainingData, testData, boostingStrategy)
     // Evaluate model on test instances and compute test error
     val labelAndPreds = testData.map { point =>
       val prediction = model.predict(point.features)
       (point.label, prediction)
     }
+    /*
     val testErr = labelAndPreds.filter(r => r._1 != r._2).count.toDouble / testData.count()
-    println("Test Error = " + testErr)
-    println("Learned classification GBT model:\n" + model.toDebugString)
-/*
-    // Save and load model
-    model.save(sc, "target/tmp/myGradientBoostingClassificationModel")
-    val sameModel = GradientBoostedTreesModel.load(sc,
-      "target/tmp/myGradientBoostingClassificationModel")
-    // $example off$
+    println("Test with validation Error = " + testErr)
+
+
+    val model2 = CGradientBoostedTrees.train(trainingData, boostingStrategy)
+
+    val labelAndPreds2 = testData.map { point =>
+      val prediction = model2.predict(point.features)
+      (point.label, prediction)
+    }
+
+    val testErr2 = labelAndPreds2.filter(r => r._1 != r._2).count.toDouble / testData.count()
+    println("Test without validation Error = " + testErr2)
+    //println("Learned classification GBT model:\n" + model.toDebugString)
 */
-    sc.stop()
+
   }
 }
 
