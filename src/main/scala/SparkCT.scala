@@ -2,6 +2,8 @@
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.mllib.tree.RandomForest
+import org.apache.spark.mllib.tree.impurity.Gini
 //import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.tree.impl.{GradientBoostedTrees => NewGBT}
 import org.apache.spark.ml.tuning.CrossValidator
@@ -55,7 +57,7 @@ object SparkCT extends App {
     boostingStrategy.numIterations = args(1).toInt // Note: Use more iterations in practice.
     boostingStrategy.treeStrategy.numClasses = 2
     boostingStrategy.treeStrategy.maxDepth = 5
-    boostingStrategy.treeStrategy.impurity = Variance
+    boostingStrategy.treeStrategy.impurity = Gini
     // Empty categoricalFeaturesInfo indicates all features are continuous.
     boostingStrategy.treeStrategy.categoricalFeaturesInfo = Map[Int, Int]()
     boostingStrategy.validationTol = args(2).toDouble
@@ -71,18 +73,35 @@ object SparkCT extends App {
     println("Test with validation Error = " + testErr)
 
 */
-    val model2 = CGradientBoostedTrees.train(trainingData, boostingStrategy)
+    val modelGBT = CGradientBoostedTrees.train(trainingData, boostingStrategy)
 
     val labelAndPreds2 = testData.map { point =>
-      val prediction = model2.predict(point.features)
+      val prediction = modelGBT.predict(point.features)
       (point.label, prediction)
     }
 
     val testErr2 = labelAndPreds2.filter(r => r._1 != r._2).count.toDouble / testData.count()
-    println("Test without validation Error = " + testErr2)
+    println("GBT Test without validation Error = " + testErr2)
     //println("Learned classification GBT model:\n" + model.toDebugString)
 
+    val numClasses = 2
+    val categoricalFeaturesInfo = Map[Int, Int]()
+    val numTrees = args(1).toInt // Use more in practice.
+    val featureSubsetStrategy = "auto" // Let the algorithm choose.
+    val impurity = "gini"
+    val maxDepth = 5
+    val maxBins = 32
 
+    val modelRF = RandomForest.trainClassifier(trainingData, numClasses, categoricalFeaturesInfo,
+      numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins)
+
+    // Evaluate model on test instances and compute test error
+    val labelAndPreds = testData.map { point =>
+      val prediction = modelRF.predict(point.features)
+      (point.label, prediction)
+    }
+    val testErr = labelAndPreds.filter(r => r._1 != r._2).count.toDouble / testData.count()
+    println("GBT Test without validation Error = " + testErr2 + "RF Test Error = " + testErr)
   }
 }
 
