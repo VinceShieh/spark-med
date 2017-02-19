@@ -3,6 +3,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 import org.apache.spark.mllib.tree.RandomForest
+import org.apache.spark.mllib.tree.impurity.Gini
 //import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.tree.impl.{GradientBoostedTrees => NewGBT}
 import org.apache.spark.ml.tuning.CrossValidator
@@ -56,7 +57,7 @@ object SparkCT extends App {
     boostingStrategy.numIterations = args(1).toInt // Note: Use more iterations in practice.
     boostingStrategy.treeStrategy.numClasses = 2
     boostingStrategy.treeStrategy.maxDepth = 5
-    boostingStrategy.treeStrategy.impurity = Variance
+    boostingStrategy.treeStrategy.impurity = Gini
     // Empty categoricalFeaturesInfo indicates all features are continuous.
     boostingStrategy.treeStrategy.categoricalFeaturesInfo = Map[Int, Int]()
     boostingStrategy.validationTol = args(2).toDouble
