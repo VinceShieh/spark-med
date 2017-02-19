@@ -102,7 +102,7 @@ class CGradientBoostedTrees private[spark] (
     }, validationInput.map { point =>
       NewLabeledPoint(point.label, point.features.asML)
     }, boostingStrategy, seed.toLong)
-    trees.length
+    println("runWithValidation completed with:" + trees.length + " trees")
     new GradientBoostedTreesModel(algo, trees.map(_.toOld), treeWeights)
   }
 
