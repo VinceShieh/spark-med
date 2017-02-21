@@ -4,6 +4,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 import org.apache.spark.mllib.tree.RandomForest
 import org.apache.spark.mllib.tree.impurity.Gini
+import org.apache.spark.mllib.tree.model.GradientBoostedTreesModel
 //import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.tree.impl.{GradientBoostedTrees => NewGBT}
 import org.apache.spark.ml.tuning.CrossValidator
@@ -25,7 +26,7 @@ object SparkCT extends App {
 
     val conf = new SparkConf().setAppName("SparkCT")
     val sc = new SparkContext(conf)
-
+    sc.setCheckpointDir("/tmp/ckp")
     // Set numIterations large enough so that it stops early.
     //   val numIterations = 20
     //   val trainRdd = sc.parallelize(OldGBTSuite.trainData, 2).map(_.asML)
@@ -56,6 +57,8 @@ object SparkCT extends App {
     boostingStrategy.treeStrategy.algo = Classification
     boostingStrategy.numIterations = args(1).toInt // Note: Use more iterations in practice.
     boostingStrategy.treeStrategy.numClasses = 2
+    boostingStrategy.treeStrategy.checkpointInterval = 50
+    boostingStrategy.treeStrategy.useNodeIdCache = true
     boostingStrategy.treeStrategy.maxDepth = 5
     boostingStrategy.treeStrategy.impurity = Gini
     // Empty categoricalFeaturesInfo indicates all features are continuous.
@@ -73,17 +76,29 @@ object SparkCT extends App {
     println("Test with validation Error = " + testErr)
 
 */
-    val modelGBT = CGradientBoostedTrees.train(trainingData, boostingStrategy)
+    var bestErr = 1.0
+    var bestModel: GradientBoostedTreesModel = null
+    var bestNumTree = 0
+    Array(500, 800, 1000).foreach(numTree => {
+      boostingStrategy.numIterations = numTree
+      val modelGBT: GradientBoostedTreesModel = CGradientBoostedTrees.train(trainingData, boostingStrategy)
 
-    val labelAndPreds2 = testData.map { point =>
-      val prediction = modelGBT.predict(point.features)
-      (point.label, prediction)
-    }
+      val labelAndPreds2 = testData.map { point =>
+        val prediction = modelGBT.predict(point.features)
+        (point.label, prediction)
+      }
 
-    val testErr2 = labelAndPreds2.filter(r => r._1 != r._2).count.toDouble / testData.count()
-    println("GBT Test without validation Error = " + testErr2)
-    //println("Learned classification GBT model:\n" + model.toDebugString)
-
+      val testErr2 = labelAndPreds2.filter(r => r._1 != r._2).count.toDouble / testData.count()
+      println("GBT Test without validation Error = " + testErr2 + ", with numTree:" + numTree)
+      if (testErr2 < bestErr) {
+        bestErr = testErr2
+        bestModel = modelGBT
+        bestNumTree = numTree
+      }
+      //println("Learned classification GBT model:\n" + model.toDebugString)
+    })
+    println("GBT Test without validation best Error = " + bestErr + ", with numTree:" + bestNumTree)
+    /*
     val numClasses = 2
     val categoricalFeaturesInfo = Map[Int, Int]()
     val numTrees = args(1).toInt // Use more in practice.
@@ -102,6 +117,7 @@ object SparkCT extends App {
     }
     val testErr = labelAndPreds.filter(r => r._1 != r._2).count.toDouble / testData.count()
     println("GBT Test without validation Error = " + testErr2 + "RF Test Error = " + testErr)
+    */
   }
 }
 

@@ -10,4 +10,4 @@ $SPARK_HOME/bin/spark-submit \
     hdfs://sr443/data/ctdata/* \
     100 \
     0.0001 \
-    144
+    144 
