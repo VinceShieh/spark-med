@@ -21,10 +21,12 @@ import org.apache.spark.annotation.Since
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.feature.{LabeledPoint => NewLabeledPoint}
+import org.apache.spark.ml.regression.DecisionTreeRegressionModel
 import org.apache.spark.ml.tree.impl.{GradientBoostedTrees => NewGBT}
 import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.mllib.tree.configuration.BoostingStrategy
-import org.apache.spark.mllib.tree.model.GradientBoostedTreesModel
+import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo, BoostingStrategy}
+import org.apache.spark.mllib.tree.loss.{Loss => OldLoss}
+import org.apache.spark.mllib.tree.model.{DecisionTreeModel, GradientBoostedTreesModel}
 import org.apache.spark.rdd.RDD
 
 /**
@@ -65,12 +67,12 @@ class CGradientBoostedTrees private[spark] (
    * @return GradientBoostedTreesModel that can be used for prediction.
    */
   @Since("1.2.0")
-  def run(input: RDD[LabeledPoint]): GradientBoostedTreesModel = {
+  def run(input: RDD[LabeledPoint]): (GradientBoostedTreesModel, Array[DecisionTreeRegressionModel], Array[Double])= {
     val algo = boostingStrategy.treeStrategy.algo
     val (trees, treeWeights) = NewGBT.run(input.map { point =>
       NewLabeledPoint(point.label, point.features.asML)
     }, boostingStrategy, seed.toLong)
-    new GradientBoostedTreesModel(algo, trees.map(_.toOld), treeWeights)
+    (new GradientBoostedTreesModel(algo, trees.map(_.toOld), treeWeights),trees, treeWeights)
   }
 
   /**
@@ -95,7 +97,7 @@ class CGradientBoostedTrees private[spark] (
   @Since("1.4.0")
   def runWithValidation(
       input: RDD[LabeledPoint],
-      validationInput: RDD[LabeledPoint]): GradientBoostedTreesModel = {
+      validationInput: RDD[LabeledPoint]): (GradientBoostedTreesModel, Array[DecisionTreeRegressionModel], Array[Double]) = {
     val algo = boostingStrategy.treeStrategy.algo
     val (trees, treeWeights) = NewGBT.runWithValidation(input.map { point =>
       NewLabeledPoint(point.label, point.features.asML)
@@ -103,7 +105,8 @@ class CGradientBoostedTrees private[spark] (
       NewLabeledPoint(point.label, point.features.asML)
     }, boostingStrategy, seed.toLong)
     println("runWithValidation completed with:" + trees.length + " trees")
-    new GradientBoostedTreesModel(algo, trees.map(_.toOld), treeWeights)
+    (new GradientBoostedTreesModel(algo, trees.map(_.toOld), treeWeights), trees, treeWeights)
+
   }
 
   /**
@@ -132,7 +135,7 @@ object CGradientBoostedTrees extends Logging {
   @Since("1.2.0")
   def train(
       input: RDD[LabeledPoint],
-      boostingStrategy: BoostingStrategy): GradientBoostedTreesModel = {
+      boostingStrategy: BoostingStrategy): (GradientBoostedTreesModel, Array[DecisionTreeRegressionModel], Array[Double]) = {
     new CGradientBoostedTrees(boostingStrategy, seed = 0).run(input)
   }
 
@@ -150,8 +153,18 @@ object CGradientBoostedTrees extends Logging {
                            training: RDD[LabeledPoint],
                            validation: RDD[LabeledPoint],
                            boostingStrategy: BoostingStrategy
-                         ): GradientBoostedTreesModel = {
+                         ): (GradientBoostedTreesModel, Array[DecisionTreeRegressionModel], Array[Double]) = {
     new CGradientBoostedTrees(boostingStrategy, seed = 0).runWithValidation(training, validation)
 
+  }
+  def evaluateEachIteration(
+                             data: RDD[LabeledPoint],
+                             trees: Array[DecisionTreeRegressionModel],
+                             treeWeights: Array[Double],
+                             loss: OldLoss,
+                             algo: OldAlgo.Value): Array[Double] = {
+    NewGBT.evaluateEachIteration(data.map { point =>
+      NewLabeledPoint(point.label, point.features.asML)
+    }, trees, treeWeights, loss, algo)
   }
 }

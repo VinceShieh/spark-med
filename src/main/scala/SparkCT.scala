@@ -64,8 +64,8 @@ object SparkCT extends App {
     // Empty categoricalFeaturesInfo indicates all features are continuous.
     boostingStrategy.treeStrategy.categoricalFeaturesInfo = Map[Int, Int]()
     boostingStrategy.validationTol = args(2).toDouble
-/*
-    val model = CGradientBoostedTrees.trainWithValidation(trainingData, testData, boostingStrategy)
+
+    val (model, trees, treeWeights) = CGradientBoostedTrees.train(trainingData, boostingStrategy)
     // Evaluate model on test instances and compute test error
     val labelAndPreds = testData.map { point =>
       val prediction = model.predict(point.features)
@@ -73,9 +73,12 @@ object SparkCT extends App {
     }
 
     val testErr = labelAndPreds.filter(r => r._1 != r._2).count.toDouble / testData.count()
+    val eval = CGradientBoostedTrees.evaluateEachIteration(testData, trees, treeWeights, LogLoss, Classification)
+    eval.zipWithIndex.foreach(println)
     println("Test with validation Error = " + testErr)
 
-*/
+
+    /*
     var bestErr = 1.0
     var bestModel: GradientBoostedTreesModel = null
     var bestNumTree = 0
@@ -98,6 +101,7 @@ object SparkCT extends App {
       //println("Learned classification GBT model:\n" + model.toDebugString)
     })
     println("GBT Test without validation best Error = " + bestErr + ", with numTree:" + bestNumTree)
+    */
     /*
     val numClasses = 2
     val categoricalFeaturesInfo = Map[Int, Int]()
